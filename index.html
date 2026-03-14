@@ -193,7 +193,7 @@ const musNotes=[
 [330,349,392,440,523,440,392,349],[494,523,587,523,494,440,392,330]];
 const musBass=[131,165,175,131,165,175,131,165];
 let musBar=0,musBeat=0;
-function startMusic(){if(!actx||musPlaying)return;musPlaying=true;musBar=0;musBeat=0;musTimer=0;
+function startMusic(){if(!actx||musPlaying)return;musPlaying=true;musBar=0;musBeat=0;
 musIv=setInterval(()=>{if(sndMode<2){stopMusic();return}
 const mel=musNotes[musBar%4][musBeat%8];const bas=musBass[musBeat%8];
 const o1=actx.createOscillator(),g1=actx.createGain();o1.type='square';o1.frequency.value=mel;
@@ -251,6 +251,23 @@ function shareOnX(){
   const txt=encodeURIComponent('I scored '+score+' pts in '+t+' with Normie #'+nId+' in Super Normie!'+ab+'\n\nCan you beat me?\nnormies.art/tools');
   window.open('https://twitter.com/intent/tweet?text='+txt,'_blank');
 }
+
+// Shared game state reset — used by startGame, startDaily, and multiplayer start
+function resetGameState(){
+  score=0;cc=0;lives=3+tMod.bLives;cLv=0;runTime=0;newRecord=false;totalDeaths=0;
+}
+
+// Cache DOM elements used in game state transitions
+let touchEl,menuEl;
+function cacheDom(){
+  touchEl=document.getElementById('touch');
+  menuEl=document.getElementById('menu');
+}
+
+// Show/hide helpers
+function showTouch(){if('ontouchstart' in window&&touchEl)touchEl.style.display='block'}
+function hideTouch(){if(touchEl)touchEl.style.display='none'}
+function showMenu(){if(menuEl)menuEl.style.display='flex';if(cv)cv.style.display='none';hideTouch()}
 
 // Dynamic canvas scaling — keeps 2:1 ratio, fits any viewport (portrait + landscape)
 function resizeCanvas(){
@@ -687,9 +704,8 @@ function nextLv(){if(cT>0)return;cLv++;if(cLv>=LVS.length){
 }else{buildLv(cLv);gs='play'}}
 function toMenu(){gs='menu';stopMusic();dailyMode=false;
   if(mpWs){try{mpWs.close()}catch(e){};mpWs=null}
-  mpState='none';mpGhost.vis=false;mpInputCode='';
-  document.getElementById('menu').style.display='flex';cv.style.display='none';
-  document.getElementById('touch').style.display='none';score=0;cc=0;lives=3;cLv=0;runTime=0}
+  mpState='none';mpGhost.vis=false;mpInputCode='';boss=null;
+  showMenu();resetGameState()}
 
 // Render
 function render(){
@@ -929,6 +945,7 @@ function gameLoop(){try{update();render()}catch(e){console.error('gameLoop error
 
 // Menu
 const nidEl=document.getElementById('nid'),prvEl=document.getElementById('normie-preview'),errEl=document.getElementById('err');
+cacheDom();
 nidEl.addEventListener('input',()=>{const id=nidEl.value;if(id!==''&&id>=0&&id<=9999){prvEl.src='https://api.normies.art/normie/'+id+'/image.png';errEl.textContent=''}});
 
 function showAchievements(){
@@ -940,21 +957,18 @@ async function startGame(){
   const id=parseInt(nidEl.value);
   if(isNaN(id)||id<0||id>9999){errEl.textContent='Enter a valid ID (0-9999)';return}
   nId=id;iA();
-  initCanvas();
-  if('ontouchstart' in window)document.getElementById('touch').style.display='block';
+  initCanvas();showTouch();
   // Show loading screen
   cx.fillStyle=COL.bg;cx.fillRect(0,0,CW,CH);cx.textAlign='center';
   cx.font='12px "Press Start 2P",monospace';cx.fillStyle=COL.txt;
   cx.fillText('Loading Normie #'+id+'...',CW/2,CH/2);cx.textAlign='left';
-  // Load image + traits
   try{await loadNormieImg(id)}catch(e){
     errEl.textContent='Could not load Normie #'+id+'. Try another ID.';
-    document.getElementById('menu').style.display='flex';cv.style.display='none';
-    document.getElementById('touch').style.display='none';return;
+    showMenu();return;
   }
   await loadTraits(id);
   loadBest(id);
-  score=0;cc=0;lives=3+tMod.bLives;cLv=0;runTime=0;newRecord=false;totalDeaths=0;
+  resetGameState();
   initBg();buildLv(0);
   gs='abs';abT=180;
   if(sndMode===2)startMusic();
@@ -964,7 +978,7 @@ async function startGame(){
 // --- Daily Challenge ---
 let dailyMode=false,dailySeed=0,dailyLB=[];
 
-function seededRNG(seed){let s=seed;return()=>{s=(s*16807+0)%2147483647;return(s-1)/2147483646}}
+function seededRNG(seed){let s=seed||1;return()=>{s=(s*16807)%2147483647;return(s-1)/2147483646}}
 function buildDailyLv(seed){
   const rng=seededRNG(seed);const W=160,H=RW;
   const m=Array.from({length:H},()=>new Array(W).fill(T.A));
@@ -1007,23 +1021,19 @@ async function startDaily(){
   const id=parseInt(nidEl.value);
   if(isNaN(id)||id<0||id>9999){errEl.textContent='Enter a valid ID (0-9999)';return}
   nId=id;iA();dailyMode=true;
-  initCanvas();
-  if('ontouchstart' in window)document.getElementById('touch').style.display='block';
-  // Show loading screen
+  initCanvas();showTouch();
   cx.fillStyle=COL.bg;cx.fillRect(0,0,CW,CH);cx.textAlign='center';
   cx.font='12px "Press Start 2P",monospace';cx.fillStyle=COL.txt;
   cx.fillText('Loading Normie #'+id+'...',CW/2,CH/2);cx.textAlign='left';
   try{await loadNormieImg(id)}catch(e){
     errEl.textContent='Could not load Normie #'+id+'. Try another ID.';
-    document.getElementById('menu').style.display='flex';cv.style.display='none';
-    document.getElementById('touch').style.display='none';dailyMode=false;return;
+    showMenu();dailyMode=false;return;
   }
   await loadTraits(id);
-  // Fetch daily data
   try{const r=await fetch('/api/daily');const d=await r.json();dailySeed=d.seed;dailyLB=d.scores}catch(e){dailySeed=parseInt(new Date().toISOString().slice(0,10).replace(/-/g,''));dailyLB=[]}
-  score=0;cc=0;lives=3+tMod.bLives;cLv=0;runTime=0;newRecord=false;totalDeaths=0;
+  resetGameState();
   initBg();buildDailyLv(dailySeed);
-  gs='dailylb';// Show leaderboard first
+  gs='dailylb';
   if(!loopOn){loopOn=true;requestAnimationFrame(gameLoop)}
 }
 
@@ -1081,41 +1091,53 @@ let ghostImg=new Image();ghostImg.crossOrigin='anonymous';
 function showMPMenu(){
   const id=parseInt(nidEl.value);
   if(isNaN(id)||id<0||id>9999){errEl.textContent='Enter a valid ID (0-9999)';return}
-  nId=id;
-  initCanvas();
-  mpState='menu';gs='mp';mpResult=null;
+  nId=id;initCanvas();
+  mpState='menu';gs='mp';mpResult=null;mpInputCode='';
   if(!loopOn){loopOn=true;requestAnimationFrame(gameLoop)}
 }
+
+let mpPendingMsg=null; // message to send once WS opens
+let ghostImgLastLoad=0; // rate-limit ghost image loading
 
 function mpConnect(){
   if(mpWs){try{mpWs.close()}catch(e){};mpWs=null}
   const proto=location.protocol==='https:'?'wss:':'ws:';
   mpWs=new WebSocket(proto+'//'+location.host);
-  mpWs.onopen=()=>{};
+  mpWs.onopen=()=>{
+    // Send queued message on open
+    if(mpPendingMsg){try{mpWs.send(mpPendingMsg)}catch(e){}mpPendingMsg=null}
+  };
   mpWs.onmessage=e=>{
-    const msg=JSON.parse(e.data);
+    let msg;
+    try{msg=JSON.parse(e.data)}catch(e){return}
+    if(!msg||typeof msg.type!=='string')return;
     switch(msg.type){
       case'created':mpCode=msg.code;mpSlot=msg.slot;mpState='waiting';break;
       case'joined':mpCode=msg.code;mpSlot=msg.slot;mpState='waiting';break;
       case'opponent_joined':mpState='countdown';break;
       case'countdown':mpCountdown=msg.count;break;
       case'start':
-        mpState='racing';gs='play';dailyMode=false;
-        iA();loadNormieImg(nId);
-        loadTraits(nId).then(()=>{
-          score=0;cc=0;lives=3+tMod.bLives;cLv=0;runTime=0;totalDeaths=0;
+        mpState='racing';dailyMode=false;
+        iA();
+        (async()=>{
+          try{await loadNormieImg(nId)}catch(e){}
+          await loadTraits(nId);
+          resetGameState();
           initBg();buildLv(0);gs='play';
           if(sndMode===2)startMusic();
-        });
+        })();
         break;
       case'ghost':
-        mpGhost={x:msg.x,y:msg.y,alive:msg.alive,face:msg.face,normieId:msg.normieId,vis:true};
-        if(!ghostImg.src||ghostImg._nid!==msg.normieId){
+        if(typeof msg.x!=='number'||typeof msg.y!=='number')break;
+        mpGhost={x:msg.x,y:msg.y,alive:!!msg.alive,face:msg.face===-1?-1:1,normieId:msg.normieId||0,vis:true};
+        // Rate-limit ghost image loads (max once per 2s)
+        if((!ghostImg.src||ghostImg._nid!==msg.normieId)&&Date.now()-ghostImgLastLoad>2000){
+          ghostImgLastLoad=Date.now();
           ghostImg=new Image();ghostImg.crossOrigin='anonymous';ghostImg._nid=msg.normieId;
-          ghostImg.src='https://api.normies.art/normie/'+msg.normieId+'/image.png';
+          ghostImg.src='https://api.normies.art/normie/'+(Number(msg.normieId)||0)+'/image.png';
         }
         break;
-      case'opponent_flag':mpResult={won:false,theirTime:msg.time,theirScore:msg.score};
+      case'opponent_flag':mpResult={won:false,theirTime:msg.time||0,theirScore:msg.score||0};
         gs='mpresult';stopMusic();break;
       case'race_end':break;
       case'opponent_left':
@@ -1125,17 +1147,21 @@ function mpConnect(){
       case'error':mpState='menu';gs='mp';break;
     }
   };
-  mpWs.onclose=()=>{if(mpState==='racing'){mpResult={won:true,disconnected:true};gs='mpresult';unlock('mp_win')}};
+  mpWs.onerror=()=>{};
+  mpWs.onclose=()=>{
+    // Don't award free win on own disconnect — treat as draw
+    if(mpState==='racing'){mpResult={won:false,disconnected:true};gs='mpresult';stopMusic()}
+  };
 }
 
 function mpCreateRoom(){
+  mpPendingMsg=JSON.stringify({type:'create',normieId:nId});
   mpConnect();
-  setTimeout(()=>{if(mpWs&&mpWs.readyState===1)mpWs.send(JSON.stringify({type:'create',normieId:nId}))},300);
 }
 
 function mpJoinRoom(code){
+  mpPendingMsg=JSON.stringify({type:'join',normieId:nId,code});
   mpConnect();
-  setTimeout(()=>{if(mpWs&&mpWs.readyState===1)mpWs.send(JSON.stringify({type:'join',normieId:nId,code}))},300);
 }
 
 let mpInputCode='';

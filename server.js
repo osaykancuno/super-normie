@@ -13,6 +13,9 @@ const MAX_BODY_SIZE = 1e5; // 100KB
 const API_RATE_LIMIT = 30; // requests per minute per IP
 const WS_MSG_RATE_LIMIT = 20; // messages per second per connection
 const WS_MAX_PAYLOAD = 1024; // max WebSocket message size in bytes
+const MAX_SCORES_PER_DAY = 500; // cap daily scores array
+const MAX_WS_PER_IP = 10; // max WebSocket connections per IP
+const ALLOWED_STATIC_EXT = new Set(['.html', '.css', '.png', '.jpg', '.gif', '.ico', '.svg', '.woff', '.woff2']); // whitelist
 
 // --- Rate Limiting ---
 const apiRates = new Map(); // ip -> { count, resetAt }
@@ -47,7 +50,8 @@ function sendJSON(res, code, data) {
     'Content-Type': 'application/json',
     'Access-Control-Allow-Origin': '*',
     'Access-Control-Allow-Methods': 'GET,POST,OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type'
+    'Access-Control-Allow-Headers': 'Content-Type',
+    'X-Content-Type-Options': 'nosniff'
   });
   res.end(JSON.stringify(data));
 }
@@ -92,14 +96,21 @@ function getDailyFile() {
   return path.join(DATA_DIR, `daily-${dailyKey()}.json`);
 }
 
-function loadDaily() {
+// Async file I/O with write lock to prevent race conditions
+let dailyLock = false;
+
+async function loadDaily() {
   const f = getDailyFile();
-  try { return JSON.parse(fs.readFileSync(f, 'utf8')); }
-  catch (e) { return { seed: parseInt(dailyKey()), scores: [] }; }
+  try {
+    const raw = await fs.promises.readFile(f, 'utf8');
+    return JSON.parse(raw);
+  } catch (e) {
+    return { seed: parseInt(dailyKey()), scores: [] };
+  }
 }
 
-function saveDaily(data) {
-  fs.writeFileSync(getDailyFile(), JSON.stringify(data));
+async function saveDaily(data) {
+  await fs.promises.writeFile(getDailyFile(), JSON.stringify(data));
 }
 
 // --- HTTP Server ---
@@ -112,35 +123,40 @@ const server = http.createServer((req, res) => {
   // REST API endpoints
   if (req.url === '/api/daily' && req.method === 'GET') {
     if (!checkApiRate(clientIp)) { sendJSON(res, 429, { error: 'Rate limit exceeded' }); return; }
-    const data = loadDaily();
-    const top20 = data.scores.sort((a, b) => b.score - a.score || a.time - b.time).slice(0, 20);
-    sendJSON(res, 200, { seed: data.seed, scores: top20 });
+    loadDaily().then(data => {
+      const top20 = [...data.scores].sort((a, b) => b.score - a.score || a.time - b.time).slice(0, 20);
+      sendJSON(res, 200, { seed: data.seed, scores: top20 });
+    }).catch(() => sendJSON(res, 500, { error: 'Server error' }));
     return;
   }
 
   if (req.url === '/api/daily' && req.method === 'POST') {
     if (!checkApiRate(clientIp)) { sendJSON(res, 429, { error: 'Rate limit exceeded' }); return; }
-    readBody(req).then(body => {
+    if (dailyLock) { sendJSON(res, 503, { error: 'Busy, try again' }); return; }
+    readBody(req).then(async body => {
       const { normieId, score, time, name } = body;
-      // Strict input validation
       if (!isInt(normieId, 0, 9999)) { sendJSON(res, 400, { error: 'Invalid normieId (must be 0-9999)' }); return; }
       if (!isInt(score, 0, 999999)) { sendJSON(res, 400, { error: 'Invalid score' }); return; }
       if (!isInt(time, 0, 9999999)) { sendJSON(res, 400, { error: 'Invalid time' }); return; }
       const safeName = sanitizeString(name, 50);
 
-      const data = loadDaily();
-      // Check if this normie already submitted today (keep best)
-      const existing = data.scores.find(s => s.normieId === normieId);
-      if (existing) {
-        if (score > existing.score || (score === existing.score && time < existing.time)) {
-          existing.score = score; existing.time = time; existing.name = safeName;
+      dailyLock = true;
+      try {
+        const data = await loadDaily();
+        const existing = data.scores.find(s => s.normieId === normieId);
+        if (existing) {
+          if (score > existing.score || (score === existing.score && time < existing.time)) {
+            existing.score = score; existing.time = time; existing.name = safeName;
+          }
+        } else {
+          if (data.scores.length < MAX_SCORES_PER_DAY) {
+            data.scores.push({ normieId, score, time, name: safeName });
+          }
         }
-      } else {
-        data.scores.push({ normieId, score, time, name: safeName });
-      }
-      saveDaily(data);
-      const top20 = data.scores.sort((a, b) => b.score - a.score || a.time - b.time).slice(0, 20);
-      sendJSON(res, 200, { seed: data.seed, scores: top20 });
+        await saveDaily(data);
+        const top20 = [...data.scores].sort((a, b) => b.score - a.score || a.time - b.time).slice(0, 20);
+        sendJSON(res, 200, { seed: data.seed, scores: top20 });
+      } finally { dailyLock = false; }
     }).catch(e => sendJSON(res, 400, { error: String(e) }));
     return;
   }
@@ -168,17 +184,40 @@ const server = http.createServer((req, res) => {
     res.writeHead(403); res.end('Forbidden'); return;
   }
 
+  // Block server-side files — only serve whitelisted extensions (+ .html for index)
   const ext = path.extname(file);
+  if (ext && !ALLOWED_STATIC_EXT.has(ext)) {
+    res.writeHead(403); res.end('Forbidden'); return;
+  }
+
+  // Block specific files by name
+  const basename = path.basename(file).toLowerCase();
+  if (['server.js', 'package.json', 'package-lock.json'].includes(basename)) {
+    res.writeHead(403); res.end('Forbidden'); return;
+  }
+
+  // Block node_modules directory
+  if (file.includes('node_modules')) {
+    res.writeHead(403); res.end('Forbidden'); return;
+  }
+
+  const secHeaders = {
+    'Content-Type': MIME[ext] || 'text/plain',
+    'X-Content-Type-Options': 'nosniff',
+    'X-Frame-Options': 'SAMEORIGIN'
+  };
   fs.readFile(file, (err, data) => {
     if (err) { res.writeHead(404); res.end('Not found'); return; }
-    res.writeHead(200, { 'Content-Type': MIME[ext] || 'text/plain' });
+    res.writeHead(200, secHeaders);
     res.end(data);
   });
 });
 
 // --- WebSocket Multiplayer ---
 const wss = new WebSocketServer({ server, maxPayload: WS_MAX_PAYLOAD });
+wss.on('error', err => console.error('WebSocketServer error:', err));
 const rooms = new Map(); // code -> { players, level, started }
+const wsPerIp = new Map(); // ip -> count
 
 function genCode() {
   let code, attempts = 0;
@@ -195,10 +234,11 @@ function broadcast(room, msg, excludeWs) {
   room.players.forEach(p => { if (p.ws !== excludeWs && p.ws.readyState === 1) p.ws.send(str); });
 }
 
-function cleanRoom(code) {
+function cleanRoom(code, removeWs) {
   const room = rooms.get(code);
   if (!room) return;
-  room.players = room.players.filter(p => p.ws.readyState === 1);
+  if (removeWs) room.players = room.players.filter(p => p.ws !== removeWs);
+  else room.players = room.players.filter(p => p.ws.readyState === 1);
   if (room.players.length === 0) rooms.delete(code);
 }
 
@@ -215,11 +255,19 @@ function validNormieId(id) { return isInt(id, 0, 9999); }
 function validCoord(v) { return typeof v === 'number' && Number.isFinite(v); }
 function validRoomCode(c) { return typeof c === 'string' && /^\d{4}$/.test(c); }
 
-wss.on('connection', ws => {
+wss.on('connection', (ws, req) => {
+  // Per-IP connection limit
+  const wsIp = req.socket.remoteAddress || 'unknown';
+  const ipCount = (wsPerIp.get(wsIp) || 0) + 1;
+  if (ipCount > MAX_WS_PER_IP) { ws.close(1008, 'Too many connections'); return; }
+  wsPerIp.set(wsIp, ipCount);
+
   let myRoom = null, myCode = null;
 
   // Per-connection rate limiting
   let msgCount = 0, msgResetAt = Date.now() + 1000;
+
+  ws.on('error', err => console.error('WebSocket client error:', err));
 
   ws.on('message', raw => {
     // Rate limit: max WS_MSG_RATE_LIMIT messages per second
@@ -242,7 +290,7 @@ wss.on('connection', ws => {
         if (!code) { ws.send(JSON.stringify({ type: 'error', msg: 'Server full' })); break; }
         const nid = validNormieId(msg.normieId) ? msg.normieId : 0;
         const room = {
-          players: [{ ws, normieId: nid, x: 0, y: 0, alive: true, ready: false }],
+          players: [{ ws, normieId: nid, x: 0, y: 0, alive: true }],
           level: 0, started: false
         };
         rooms.set(code, room);
@@ -258,7 +306,7 @@ wss.on('connection', ws => {
         if (room.players.length >= 2) { ws.send(JSON.stringify({ type: 'error', msg: 'Room full' })); break; }
         if (room.started) { ws.send(JSON.stringify({ type: 'error', msg: 'Game in progress' })); break; }
         const nid = validNormieId(msg.normieId) ? msg.normieId : 0;
-        room.players.push({ ws, normieId: nid, x: 0, y: 0, alive: true, ready: false });
+        room.players.push({ ws, normieId: nid, x: 0, y: 0, alive: true });
         myRoom = room; myCode = msg.code;
         ws.send(JSON.stringify({ type: 'joined', code: msg.code, slot: 1 }));
         // Notify host
@@ -306,19 +354,22 @@ wss.on('connection', ws => {
       case 'leave': {
         if (myRoom) {
           broadcast(myRoom, { type: 'opponent_left' }, ws);
-          cleanRoom(myCode);
+          cleanRoom(myCode, ws);
         }
         myRoom = null; myCode = null;
         break;
       }
-      // Unknown message types are silently ignored
     }
   });
 
   ws.on('close', () => {
+    // Decrement per-IP connection count
+    const c = (wsPerIp.get(wsIp) || 1) - 1;
+    if (c <= 0) wsPerIp.delete(wsIp); else wsPerIp.set(wsIp, c);
+
     if (myRoom) {
       broadcast(myRoom, { type: 'opponent_left' }, ws);
-      cleanRoom(myCode);
+      cleanRoom(myCode, ws);
     }
   });
 });
