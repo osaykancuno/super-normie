@@ -13,27 +13,29 @@
       overflow:hidden; display:flex; justify-content:center; align-items:center; min-height:100vh;
     }
     #menu {
-      text-align:center; display:flex; flex-direction:column; align-items:center; gap:20px;
-      padding:20px 20px 40px; overflow-y:auto; max-height:100vh; max-height:100dvh;
+      text-align:center; display:flex; flex-direction:column; align-items:center; gap:12px;
+      padding:18px 20px 14px; overflow-y:auto; max-height:100vh; max-height:100dvh;
+      scrollbar-width:none; -ms-overflow-style:none;
     }
-    #menu h1 { font-size:42px; letter-spacing:3px; line-height:1.3; text-shadow:3px 3px 0 #1a1b1c; }
-    #menu .sub { font-size:10px; color:rgba(227,229,228,0.45); }
+    #menu::-webkit-scrollbar { display:none; }
+    #menu h1 { font-size:42px; letter-spacing:3px; line-height:1.2; text-shadow:3px 3px 0 #1a1b1c; margin:0; }
+    #menu .sub { font-size:10px; color:rgba(227,229,228,0.45); margin:0; }
     #normie-preview {
-      width:120px; height:120px; border:2px solid rgba(227,229,228,0.15);
+      width:90px; height:90px; border:2px solid rgba(227,229,228,0.15);
       image-rendering:pixelated; background:#1a1b1c; display:block;
     }
     #menu input {
       background:#1a1b1c; border:1px solid rgba(227,229,228,0.15); color:#e3e5e4;
-      padding:10px 16px; font-family:inherit; font-size:13px; text-align:center; width:200px;
+      padding:8px 16px; font-family:inherit; font-size:13px; text-align:center; width:200px;
     }
     #menu input:focus { outline:none; border-color:rgba(227,229,228,0.4); }
     #menu button {
       background:transparent; border:1px solid rgba(227,229,228,0.3); color:#e3e5e4;
-      padding:12px 36px; font-family:inherit; font-size:13px; cursor:pointer; transition:all .2s;
+      padding:10px 36px; font-family:inherit; font-size:13px; cursor:pointer; transition:all .2s;
     }
     #menu button:hover { background:rgba(227,229,228,0.1); border-color:rgba(227,229,228,0.5); }
-    .info { font-size:9px; color:rgba(227,229,228,0.35); line-height:2.2; }
-    .err { color:#a44; font-size:9px; height:14px; }
+    .info { font-size:9px; color:rgba(227,229,228,0.35); line-height:1.8; margin:0; }
+    .err { color:#a44; font-size:9px; min-height:14px; margin:-4px 0 -4px; }
     canvas { display:none; image-rendering:pixelated; image-rendering:crisp-edges; }
     #touch { display:none; position:fixed; bottom:0; left:0; right:0; pointer-events:none; }
     .tb {
@@ -47,9 +49,9 @@
     #br { bottom:18px; left:100px; }
     #bj { bottom:18px; right:18px; }
     @media(max-width:600px){
-      #menu h1{font-size:26px;} #menu{gap:14px;padding:14px 14px 40px;}
-      #menu button{padding:10px 20px;font-size:11px;}
-      .info{font-size:8px;} #normie-preview{width:90px;height:90px;}
+      #menu h1{font-size:26px;} #menu{gap:10px;padding:10px 14px 14px;}
+      #menu button{padding:8px 18px;font-size:11px;}
+      .info{font-size:8px;line-height:1.6;} #normie-preview{width:70px;height:70px;}
     }
   </style>
 </head>
