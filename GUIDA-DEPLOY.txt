@@ -1,0 +1,166 @@
+================================================================
+   SUPER NORMIE - GUIDA DEPLOY ONLINE (GRATIS)
+   Passo dopo passo per chi non ha esperienza
+================================================================
+
+Useremo 2 servizi gratuiti:
+- GitHub (per salvare il codice online)
+- Render.com (per pubblicare il gioco con server)
+
+Tempo stimato: 15-20 minuti
+Costo: 0 euro
+
+================================================================
+PARTE 1: CREARE UN ACCOUNT GITHUB
+================================================================
+
+1. Apri il browser e vai su: https://github.com
+2. Clicca "Sign up" in alto a destra
+3. Inserisci email, password, e un nome utente
+4. Completa la verifica e conferma l'email
+
+================================================================
+PARTE 2: CARICARE IL GIOCO SU GITHUB
+================================================================
+
+1. Dopo il login su GitHub, clicca il pulsante "+" in alto
+   a destra e scegli "New repository"
+
+2. Compila cosi:
+   - Repository name: super-normie
+   - Description: Super Normie - A Normies Community Game
+   - Seleziona "Public"
+   - NON spuntare nessuna checkbox
+   - Clicca "Create repository"
+
+3. Nella pagina che appare, clicca "uploading an existing file"
+   (il link blu nel testo)
+
+4. Trascina TUTTI questi file dalla cartella Super Normie
+   dentro l'area di upload:
+   - index.html
+   - server.js
+   - package.json
+
+5. In basso scrivi "Initial upload" e clicca
+   "Commit changes"
+
+FATTO! Il codice e' ora su GitHub.
+
+================================================================
+PARTE 3: CREARE UN ACCOUNT SU RENDER.COM
+================================================================
+
+1. Vai su: https://render.com
+2. Clicca "Get Started for Free"
+3. Scegli "Sign up with GitHub" (il piu' semplice!)
+4. Autorizza Render ad accedere al tuo GitHub
+
+================================================================
+PARTE 4: PUBBLICARE IL GIOCO SU RENDER
+================================================================
+
+1. Nella dashboard di Render, clicca "New +"
+   e scegli "Web Service"
+
+2. Nella sezione "Connect a repository":
+   - Cerca "super-normie" nella lista
+   - Se non lo vedi, clicca "Configure account" per
+     dare accesso a Render ai tuoi repository
+   - Seleziona "super-normie" e clicca "Connect"
+
+3. Compila le impostazioni cosi:
+
+   Name:              super-normie
+   Region:            Frankfurt (EU) oppure Oregon (US)
+   Branch:            main
+   Runtime:           Node
+   Build Command:     npm install
+   Start Command:     node server.js
+   Instance Type:     Free  <-- IMPORTANTE: scegli Free!
+
+4. Clicca "Create Web Service"
+
+5. Aspetta 2-3 minuti. Vedrai i log di build.
+   Quando appare "Your service is live", e' pronto!
+
+6. In alto troverai l'URL del tuo gioco, tipo:
+   https://super-normie.onrender.com
+
+   QUESTO E' IL LINK DEL TUO GIOCO ONLINE!
+
+================================================================
+PARTE 5: AGGIORNARE L'URL DEL WEBSOCKET
+================================================================
+
+IMPORTANTE: Prima di pubblicare, devi fare una piccola
+modifica al codice per far funzionare il Multiplayer online.
+
+Il codice gia' gestisce automaticamente ws:// e wss://
+in base al protocollo della pagina, quindi il multiplayer
+funzionera' subito senza modifiche!
+
+Le Daily Challenge e la Leaderboard usano URL relativi
+(/api/daily), quindi funzioneranno anche loro subito.
+
+================================================================
+PARTE 6: CONDIVIDERE IL GIOCO
+================================================================
+
+Il tuo gioco e' ora live! Condividi il link:
+https://super-normie.onrender.com
+
+Per condividerlo su X/Twitter:
+- Vai su https://x.com e scrivi un post con il link
+
+NOTA: Con il piano gratuito di Render, il server si
+"addormenta" dopo 15 minuti di inattivita'. La prima
+visita dopo il risveglio puo' impiegare 30-60 secondi.
+Questo e' normale e gratuito.
+
+================================================================
+COME AGGIORNARE IL GIOCO IN FUTURO
+================================================================
+
+Ogni volta che modifichi i file sul tuo PC:
+
+1. Vai su https://github.com/TUONOME/super-normie
+2. Clicca sul file da aggiornare (es: index.html)
+3. Clicca l'icona matita (Edit) in alto a destra
+4. Sostituisci il contenuto col file nuovo
+5. Clicca "Commit changes"
+
+Render si aggiornera' AUTOMATICAMENTE in 2-3 minuti!
+
+================================================================
+RISOLUZIONE PROBLEMI
+================================================================
+
+"Il sito non si carica"
+-> Aspetta 30-60 secondi, il server gratuito si risveglia
+
+"Build failed su Render"
+-> Controlla che package.json sia stato caricato su GitHub
+
+"Multiplayer non funziona"
+-> Verifica che il servizio Render sia attivo (non suspended)
+
+"Le daily challenge non salvano"
+-> Normale: la cartella data/ si resetta ad ogni deploy.
+   I punteggi giornalieri partono da zero dopo ogni aggiornamento.
+
+================================================================
+RIEPILOGO FILE NECESSARI
+================================================================
+
+La cartella Super Normie deve contenere:
+  index.html    - Il gioco completo (frontend)
+  server.js     - Il server (backend + API + WebSocket)
+  package.json  - Le dipendenze del progetto
+
+NON caricare:
+  node_modules/ - Render lo genera automaticamente
+  data/         - Render lo crea automaticamente
+  .claude/      - File di sviluppo, non necessario
+
+================================================================
