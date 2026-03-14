@@ -53,6 +53,36 @@
       #menu button{padding:8px 18px;font-size:11px;}
       .info{font-size:8px;line-height:1.6;} #normie-preview{width:70px;height:70px;}
     }
+    /* Landscape on mobile — compact everything for short viewport */
+    @media(orientation:landscape) and (max-height:500px){
+      body{align-items:flex-start;}
+      #menu{gap:6px;padding:6px 14px 10px;}
+      #menu h1{font-size:20px;letter-spacing:2px;}
+      #menu .sub{font-size:8px;}
+      #normie-preview{width:50px;height:50px;}
+      #menu input{padding:5px 12px;font-size:11px;width:170px;}
+      #menu button{padding:5px 16px;font-size:9px;}
+      .info{font-size:7px;line-height:1.4;}
+      .err{font-size:8px;min-height:10px;margin:-2px 0 -2px;}
+      .tb{width:50px;height:50px;font-size:20px;border-radius:8px;}
+      #bl{bottom:8px;left:8px;}
+      #br{bottom:8px;left:66px;}
+      #bj{bottom:8px;right:8px;}
+    }
+    /* iPhone safe areas (notch/Dynamic Island) */
+    @supports(padding:env(safe-area-inset-left)){
+      #bl{left:calc(18px + env(safe-area-inset-left));}
+      #br{left:calc(100px + env(safe-area-inset-left));}
+      #bj{right:calc(18px + env(safe-area-inset-right));}
+      #menu{padding-left:calc(20px + env(safe-area-inset-left));padding-right:calc(20px + env(safe-area-inset-right));}
+    }
+    @media(orientation:landscape) and (max-height:500px){
+      @supports(padding:env(safe-area-inset-left)){
+        #bl{left:calc(8px + env(safe-area-inset-left));}
+        #br{left:calc(66px + env(safe-area-inset-left));}
+        #bj{right:calc(8px + env(safe-area-inset-right));}
+      }
+    }
   </style>
 </head>
 <body>
@@ -222,10 +252,21 @@ function shareOnX(){
   window.open('https://twitter.com/intent/tweet?text='+txt,'_blank');
 }
 
+// Dynamic canvas scaling — keeps 2:1 ratio, fits any viewport (portrait + landscape)
+function resizeCanvas(){
+  if(!cv||cv.style.display==='none')return;
+  const vw=window.innerWidth,vh=window.innerHeight,ratio=CW/CH;
+  let w=vw,h=vw/ratio;
+  if(h>vh){h=vh;w=vh*ratio}
+  cv.style.width=w+'px';cv.style.height=h+'px';
+}
+window.addEventListener('resize',resizeCanvas);
+
 // Helper: initialize canvas and hide menu
 function initCanvas(){
   cv=document.getElementById('gc');cx=cv.getContext('2d');
-  cv.width=CW;cv.height=CH;cv.style.display='block';cv.style.width='100vw';cv.style.maxHeight='100vh';cv.style.height='auto';
+  cv.width=CW;cv.height=CH;cv.style.display='block';
+  resizeCanvas();
   document.getElementById('menu').style.display='none';
   initCanvasClick();
 }
