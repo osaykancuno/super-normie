@@ -123,7 +123,7 @@ const server = http.createServer((req, res) => {
     readBody(req).then(body => {
       const { normieId, score, time, name } = body;
       // Strict input validation
-      if (!isInt(normieId, 1, 6969)) { sendJSON(res, 400, { error: 'Invalid normieId (must be 1-6969)' }); return; }
+      if (!isInt(normieId, 0, 9999)) { sendJSON(res, 400, { error: 'Invalid normieId (must be 0-9999)' }); return; }
       if (!isInt(score, 0, 999999)) { sendJSON(res, 400, { error: 'Invalid score' }); return; }
       if (!isInt(time, 0, 9999999)) { sendJSON(res, 400, { error: 'Invalid time' }); return; }
       const safeName = sanitizeString(name, 50);
@@ -211,7 +211,7 @@ setInterval(() => {
 }, 60000);
 
 // --- WebSocket Validation Helpers ---
-function validNormieId(id) { return isInt(id, 1, 6969); }
+function validNormieId(id) { return isInt(id, 0, 9999); }
 function validCoord(v) { return typeof v === 'number' && Number.isFinite(v); }
 function validRoomCode(c) { return typeof c === 'string' && /^\d{4}$/.test(c); }
 

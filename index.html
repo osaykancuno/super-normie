@@ -60,7 +60,7 @@
     <h1>SUPER<br>NORMIE</h1>
     <p class="sub">A Normies Community Game</p>
     <img id="normie-preview" src="" alt="">
-    <input type="number" id="nid" placeholder="Normie ID (1-6969)" min="1" max="6969">
+    <input type="number" id="nid" placeholder="Normie ID (0-9999)" min="0" max="9999">
     <p id="err" class="err"></p>
     <button onclick="startGame()">START GAME</button>
     <div style="display:flex;gap:10px;">
@@ -889,7 +889,7 @@ function gameLoop(){try{update();render()}catch(e){console.error('gameLoop error
 
 // Menu
 const nidEl=document.getElementById('nid'),prvEl=document.getElementById('normie-preview'),errEl=document.getElementById('err');
-nidEl.addEventListener('input',()=>{const id=nidEl.value;if(id&&id>0&&id<=6969){prvEl.src='https://api.normies.art/normie/'+id+'/image.png';errEl.textContent=''}});
+nidEl.addEventListener('input',()=>{const id=nidEl.value;if(id!==''&&id>=0&&id<=9999){prvEl.src='https://api.normies.art/normie/'+id+'/image.png';errEl.textContent=''}});
 
 function showAchievements(){
   initCanvas();
@@ -898,7 +898,7 @@ function showAchievements(){
 
 async function startGame(){
   const id=parseInt(nidEl.value);
-  if(!id||id<1||id>6969){errEl.textContent='Enter a valid ID (1-6969)';return}
+  if(isNaN(id)||id<0||id>9999){errEl.textContent='Enter a valid ID (0-9999)';return}
   nId=id;iA();
   initCanvas();
   if('ontouchstart' in window)document.getElementById('touch').style.display='block';
@@ -965,7 +965,7 @@ let dailyFx=155;
 
 async function startDaily(){
   const id=parseInt(nidEl.value);
-  if(!id||id<1||id>6969){errEl.textContent='Enter a valid ID (1-6969)';return}
+  if(isNaN(id)||id<0||id>9999){errEl.textContent='Enter a valid ID (0-9999)';return}
   nId=id;iA();dailyMode=true;
   initCanvas();
   if('ontouchstart' in window)document.getElementById('touch').style.display='block';
@@ -1040,7 +1040,7 @@ let ghostImg=new Image();ghostImg.crossOrigin='anonymous';
 
 function showMPMenu(){
   const id=parseInt(nidEl.value);
-  if(!id||id<1||id>6969){errEl.textContent='Enter a valid ID (1-6969)';return}
+  if(isNaN(id)||id<0||id>9999){errEl.textContent='Enter a valid ID (0-9999)';return}
   nId=id;
   initCanvas();
   mpState='menu';gs='mp';mpResult=null;
