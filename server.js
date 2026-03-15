@@ -99,6 +99,9 @@ function getDailyFile() {
 // Async file I/O with write lock to prevent race conditions
 let dailyLock = false;
 
+// General leaderboard cache (5 min TTL)
+let lbCache = null, lbCacheTime = 0;
+
 async function loadDaily() {
   const f = getDailyFile();
   try {
@@ -121,6 +124,37 @@ const server = http.createServer((req, res) => {
   const clientIp = req.socket.remoteAddress || 'unknown';
 
   // REST API endpoints
+
+  // General leaderboard — aggregate all daily files, best per normieId
+  if (req.url === '/api/leaderboard' && req.method === 'GET') {
+    if (!checkApiRate(clientIp)) { sendJSON(res, 429, { error: 'Rate limit exceeded' }); return; }
+    // Use cache (5 min)
+    const now = Date.now();
+    if (lbCache && now - lbCacheTime < 300000) { sendJSON(res, 200, lbCache); return; }
+    fs.promises.readdir(DATA_DIR).then(async files => {
+      const dailyFiles = files.filter(f => f.startsWith('daily-') && f.endsWith('.json'));
+      const best = new Map(); // normieId -> {normieId, score, time, date}
+      for (const file of dailyFiles) {
+        try {
+          const raw = await fs.promises.readFile(path.join(DATA_DIR, file), 'utf8');
+          const data = JSON.parse(raw);
+          const dateStr = file.replace('daily-', '').replace('.json', '');
+          (data.scores || []).forEach(s => {
+            const existing = best.get(s.normieId);
+            if (!existing || s.score > existing.score || (s.score === existing.score && s.time < existing.time)) {
+              best.set(s.normieId, { normieId: s.normieId, score: s.score, time: s.time, date: dateStr });
+            }
+          });
+        } catch (e) { /* skip corrupt files */ }
+      }
+      const top20 = [...best.values()].sort((a, b) => b.score - a.score || a.time - b.time).slice(0, 20);
+      lbCache = { scores: top20 };
+      lbCacheTime = now;
+      sendJSON(res, 200, lbCache);
+    }).catch(() => sendJSON(res, 500, { error: 'Server error' }));
+    return;
+  }
+
   if (req.url === '/api/daily' && req.method === 'GET') {
     if (!checkApiRate(clientIp)) { sendJSON(res, 429, { error: 'Rate limit exceeded' }); return; }
     loadDaily().then(data => {
@@ -154,6 +188,7 @@ const server = http.createServer((req, res) => {
           }
         }
         await saveDaily(data);
+        lbCache = null; // invalidate general leaderboard cache
         const top20 = [...data.scores].sort((a, b) => b.score - a.score || a.time - b.time).slice(0, 20);
         sendJSON(res, 200, { seed: data.seed, scores: top20 });
       } finally { dailyLock = false; }

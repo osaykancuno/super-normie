@@ -97,7 +97,10 @@
       <button onclick="startDaily()" style="padding:8px 16px;font-size:9px;">DAILY CHALLENGE</button>
       <button onclick="showMPMenu()" style="padding:8px 16px;font-size:9px;">MULTIPLAYER</button>
     </div>
-    <button onclick="showAchievements()" style="padding:8px 24px;font-size:10px;">ACHIEVEMENTS</button>
+    <div style="display:flex;gap:10px;">
+      <button onclick="showAchievements()" style="padding:8px 16px;font-size:9px;">ACHIEVEMENTS</button>
+      <button onclick="showLeaderboard()" style="padding:8px 16px;font-size:9px;">LEADERBOARD</button>
+    </div>
     <div class="info">Arrow Keys / WASD to move<br>Space to jump &middot; Stomp enemies</div>
     <a href="https://normies.art" target="_blank" rel="noopener" class="sub" style="text-decoration:none;transition:color .2s;" onmouseover="this.style.color='#e3e5e4'" onmouseout="this.style.color=''">normies.art</a>
   </div>
@@ -254,7 +257,7 @@ function shareOnX(){
 
 // Shared game state reset — used by startGame, startDaily, and multiplayer start
 function resetGameState(){
-  score=0;cc=0;lives=3+tMod.bLives;cLv=0;runTime=0;newRecord=false;totalDeaths=0;
+  score=0;cc=0;lives=3+tMod.bLives;cLv=0;runTime=0;newRecord=false;totalDeaths=0;dblJump=false;jReleased=true;
 }
 
 // Cache DOM elements used in game state transitions
@@ -364,6 +367,8 @@ document.addEventListener('keydown',e=>{
   keys[e.code]=true;
   if(['Space','ArrowUp','ArrowDown'].includes(e.code))e.preventDefault();
   if(gs==='achscr'){toMenu();return}
+  if(gs==='lb'){if(e.code==='Escape'||e.code==='Backspace'){toMenu();return}
+    if(e.code==='ArrowLeft'||e.code==='ArrowRight'){lbTab=lbTab==='general'?'daily':'general';return}return}
   if(gs==='dailylb'){if(dailyDone){toMenu()}else{gs='play'};return}
   if(gs==='mp'){
     if(e.code==='Escape'){if(mpWs){mpWs.close();mpWs=null}toMenu();return}
@@ -411,6 +416,12 @@ function initCanvasClick(){
     if(gs==='lc'&&cT<=0){if(dailyMode){dailyFinish()}else{nextLv()};return}
     if(gs==='go'||gs==='win'){toMenu();return}
     if(gs==='achscr'){toMenu();return}
+    if(gs==='lb'){
+      const t1=lbTabRects.t1,t2=lbTabRects.t2;
+      if(mx>=t1.x&&mx<=t1.x+t1.w&&my>=t1.y&&my<=t1.y+t1.h){lbTab='general';return}
+      if(mx>=t2.x&&mx<=t2.x+t2.w&&my>=t2.y&&my<=t2.y+t2.h){lbTab='daily';return}
+      return;
+    }
     if(gs==='dailylb'){if(dailyDone){toMenu()}else{gs='play'};return}
     if(gs==='abs'&&abT<=0){gs='play';return}
     if(gs==='mpresult'){if(mpWs){mpWs.close();mpWs=null}mpState='none';mpGhost.vis=false;toMenu();return}
@@ -619,11 +630,13 @@ function update(){
   if(!pl.dead){
     if(kd('l')){pl.vx-=MA;pl.face=-1}else if(kd('r')){pl.vx+=MA;pl.face=1}else pl.vx*=FR;
     pl.vx=Math.max(-mSpd,Math.min(mSpd,pl.vx));if(Math.abs(pl.vx)<.1)pl.vx=0;
-    if(kd('j')&&pl.grounded){pl.vy=JF*tMod.jmp;pl.grounded=false;sfx('j')}
-    if(!kd('j')&&pl.vy<-3)pl.vy=-3;
+    if(kd('j')&&pl.grounded&&jReleased){pl.vy=JF*tMod.jmp;pl.grounded=false;dblJump=false;jReleased=false;sfx('j')}
+    else if(kd('j')&&!pl.grounded&&!dblJump&&jReleased){pl.vy=JF*tMod.jmp*0.8;dblJump=true;jReleased=false;sfx('j')}
+    if(!kd('j')){jReleased=true;if(pl.vy<-3)pl.vy=-3}
   }
   pl.vy+=GR;if(pl.vy>12)pl.vy=12;
   moveEnt(pl);
+  if(pl.grounded)dblJump=false;
   if(pl.y>RW*TZ+50){pDie();return}
   // Fire tile death check
   if(!pl.dead&&pl.inv<=0){
@@ -714,6 +727,7 @@ function render(){
   if(gs==='abs'){drawAbilities();return}
   if(gs==='achscr'){drawAchScreen();return}
   if(gs==='dailylb'){drawDailyLB();return}
+  if(gs==='lb'){drawLeaderboard();return}
   if(gs==='mp'){drawMPScreen();return}
   if(gs==='mpresult'){drawMPResult();return}
   if(gs==='menu')return;
@@ -980,6 +994,12 @@ async function startGame(){
 // --- Daily Challenge ---
 let dailyMode=false,dailySeed=0,dailyLB=[],dailyDone=false;
 
+// Leaderboard screen
+let lbGeneral=[],lbDaily=[],lbTab='general';
+
+// Double jump
+let dblJump=false,jReleased=true;
+
 function seededRNG(seed){let s=seed||1;return()=>{s=(s*16807)%2147483647;return(s-1)/2147483646}}
 function buildDailyLv(seed){
   const rng=seededRNG(seed);const W=160,H=RW;
@@ -1084,6 +1104,67 @@ function drawDailyLB(){
   cx.textAlign='center';cx.font='10px "Press Start 2P",monospace';cx.fillStyle='rgba(227,229,228,0.4)';
   cx.fillText('Press any key to start',CW/2,CH-30);cx.textAlign='left';
 }
+
+// --- Leaderboard Screen ---
+async function showLeaderboard(){
+  initCanvas();
+  gs='lb';lbTab='general';
+  cx.fillStyle=COL.bg;cx.fillRect(0,0,CW,CH);cx.textAlign='center';
+  cx.font='12px "Press Start 2P",monospace';cx.fillStyle=COL.txt;
+  cx.fillText('Loading leaderboards...',CW/2,CH/2);cx.textAlign='left';
+  try{const r=await fetch('/api/leaderboard');const d=await r.json();lbGeneral=d.scores||[]}catch(e){lbGeneral=[]}
+  try{const r=await fetch('/api/daily');const d=await r.json();lbDaily=d.scores||[]}catch(e){lbDaily=[]}
+  if(!loopOn){loopOn=true;requestAnimationFrame(gameLoop)}
+}
+
+function drawLeaderboard(){
+  cx.fillStyle='rgba(0,0,0,0.95)';cx.fillRect(0,0,CW,CH);
+  cx.textAlign='center';
+  cx.font='16px "Press Start 2P",monospace';cx.fillStyle=COL.coinH;
+  cx.fillText('LEADERBOARD',CW/2,40);
+  // Tabs
+  const tabW=160,tabH=28,tabY=58,tabGap=10;
+  const t1x=CW/2-tabW-tabGap/2,t2x=CW/2+tabGap/2;
+  // General tab
+  cx.fillStyle=lbTab==='general'?'rgba(212,165,32,0.2)':'rgba(227,229,228,0.05)';
+  cx.fillRect(t1x,tabY,tabW,tabH);
+  cx.strokeStyle=lbTab==='general'?'rgba(212,165,32,0.5)':'rgba(227,229,228,0.15)';
+  cx.lineWidth=1;cx.strokeRect(t1x,tabY,tabW,tabH);
+  cx.font='9px "Press Start 2P",monospace';
+  cx.fillStyle=lbTab==='general'?COL.coinH:'rgba(227,229,228,0.4)';
+  cx.fillText('ALL TIME',t1x+tabW/2,tabY+18);
+  // Daily tab
+  cx.fillStyle=lbTab==='daily'?'rgba(212,165,32,0.2)':'rgba(227,229,228,0.05)';
+  cx.fillRect(t2x,tabY,tabW,tabH);
+  cx.strokeStyle=lbTab==='daily'?'rgba(212,165,32,0.5)':'rgba(227,229,228,0.15)';
+  cx.strokeRect(t2x,tabY,tabW,tabH);
+  cx.fillStyle=lbTab==='daily'?COL.coinH:'rgba(227,229,228,0.4)';
+  cx.fillText('DAILY',t2x+tabW/2,tabY+18);
+  // Store tab rects for click handling
+  lbTabRects={t1:{x:t1x,y:tabY,w:tabW,h:tabH},t2:{x:t2x,y:tabY,w:tabW,h:tabH}};
+  // Scores
+  const data=lbTab==='general'?lbGeneral:lbDaily;
+  if(data.length===0){
+    cx.font='9px "Press Start 2P",monospace';cx.fillStyle='rgba(227,229,228,0.3)';
+    cx.fillText('No scores yet',CW/2,140);
+  }else{
+    data.slice(0,15).forEach((s,i)=>{
+      const y=115+i*24;
+      cx.font='9px "Press Start 2P",monospace';
+      cx.fillStyle=i===0?COL.coinH:i<3?'rgba(227,229,228,0.7)':'rgba(227,229,228,0.4)';
+      cx.textAlign='left';
+      cx.fillText('#'+(i+1),CW/2-220,y);
+      cx.fillText('Normie #'+s.normieId,CW/2-170,y);
+      cx.textAlign='right';
+      cx.fillText(s.score+' pts',CW/2+100,y);
+      cx.fillText(fmtTime(s.time),CW/2+220,y);
+      if(lbTab==='general'&&s.date){cx.fillStyle='rgba(227,229,228,0.2)';cx.font='7px "Press Start 2P",monospace';cx.fillText(s.date,CW/2-225,y)}
+    });
+  }
+  cx.textAlign='center';cx.font='9px "Press Start 2P",monospace';cx.fillStyle='rgba(227,229,228,0.3)';
+  cx.fillText('Press ESC to go back  \u2190\u2192 switch tab',CW/2,CH-20);cx.textAlign='left';
+}
+let lbTabRects={t1:{x:0,y:0,w:0,h:0},t2:{x:0,y:0,w:0,h:0}};
 
 // --- Multiplayer ---
 let mpWs=null,mpSlot=-1,mpGhost={x:0,y:0,alive:true,face:1,normieId:0,vis:false};
