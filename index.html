@@ -716,6 +716,8 @@ function render(){
   if(gs==='dailylb'){drawDailyLB();return}
   if(gs==='mp'){drawMPScreen();return}
   if(gs==='mpresult'){drawMPResult();return}
+  if(gs==='menu')return;
+  if(!cam)return;
 
   stars.forEach(s=>{const f=.5+.5*Math.sin(Date.now()*.003+s.b*10);cx.fillStyle=`rgba(227,229,228,${(.2+.3*f).toFixed(2)})`;cx.fillRect(s.x,s.y,s.s,s.s)});
   const ss=cam.x*.15;cx.fillStyle='#1a1b1c';
