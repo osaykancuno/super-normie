@@ -364,7 +364,7 @@ document.addEventListener('keydown',e=>{
   keys[e.code]=true;
   if(['Space','ArrowUp','ArrowDown'].includes(e.code))e.preventDefault();
   if(gs==='achscr'){toMenu();return}
-  if(gs==='dailylb'){gs='play';return}
+  if(gs==='dailylb'){if(dailyDone){toMenu()}else{gs='play'};return}
   if(gs==='mp'){
     if(e.code==='Escape'){if(mpWs){mpWs.close();mpWs=null}toMenu();return}
     if(mpState==='menu'){
@@ -411,7 +411,7 @@ function initCanvasClick(){
     if(gs==='lc'&&cT<=0){if(dailyMode){dailyFinish()}else{nextLv()};return}
     if(gs==='go'||gs==='win'){toMenu();return}
     if(gs==='achscr'){toMenu();return}
-    if(gs==='dailylb'){gs='play';return}
+    if(gs==='dailylb'){if(dailyDone){toMenu()}else{gs='play'};return}
     if(gs==='abs'&&abT<=0){gs='play';return}
     if(gs==='mpresult'){if(mpWs){mpWs.close();mpWs=null}mpState='none';mpGhost.vis=false;toMenu();return}
     // Multiplayer menu touch support
@@ -976,7 +976,7 @@ async function startGame(){
 }
 
 // --- Daily Challenge ---
-let dailyMode=false,dailySeed=0,dailyLB=[];
+let dailyMode=false,dailySeed=0,dailyLB=[],dailyDone=false;
 
 function seededRNG(seed){let s=seed||1;return()=>{s=(s*16807)%2147483647;return(s-1)/2147483646}}
 function buildDailyLv(seed){
@@ -1032,7 +1032,7 @@ async function startDaily(){
   await loadTraits(id);
   try{const r=await fetch('/api/daily');const d=await r.json();dailySeed=d.seed;dailyLB=d.scores}catch(e){dailySeed=parseInt(new Date().toISOString().slice(0,10).replace(/-/g,''));dailyLB=[]}
   resetGameState();
-  initBg();buildDailyLv(dailySeed);
+  initBg();buildDailyLv(dailySeed);dailyDone=false;
   gs='dailylb';
   if(!loopOn){loopOn=true;requestAnimationFrame(gameLoop)}
 }
@@ -1049,7 +1049,7 @@ async function dailyFinish(){
   unlock('daily');
   if(score>=10000)unlock('score_10k');
   await submitDaily();
-  gs='dailylb'; // Show updated leaderboard
+  gs='dailylb';dailyDone=true;
   dailyMode=false;stopMusic();
 }
 
