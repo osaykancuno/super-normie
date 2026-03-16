@@ -97,7 +97,7 @@ function getDailyFile() {
 }
 
 // Async file I/O with write lock to prevent race conditions
-let dailyLock = false;
+let dailyLockPromise = Promise.resolve();
 
 // General leaderboard cache (5 min TTL)
 let lbCache = null, lbCacheTime = 0;
@@ -166,7 +166,6 @@ const server = http.createServer((req, res) => {
 
   if (req.url === '/api/daily' && req.method === 'POST') {
     if (!checkApiRate(clientIp)) { sendJSON(res, 429, { error: 'Rate limit exceeded' }); return; }
-    if (dailyLock) { sendJSON(res, 503, { error: 'Busy, try again' }); return; }
     readBody(req).then(async body => {
       const { normieId, score, time, name } = body;
       if (!isInt(normieId, 0, 9999)) { sendJSON(res, 400, { error: 'Invalid normieId (must be 0-9999)' }); return; }
@@ -174,8 +173,8 @@ const server = http.createServer((req, res) => {
       if (!isInt(time, 0, 9999999)) { sendJSON(res, 400, { error: 'Invalid time' }); return; }
       const safeName = sanitizeString(name, 50);
 
-      dailyLock = true;
-      try {
+      // Serialize writes to prevent race conditions
+      dailyLockPromise = dailyLockPromise.then(async () => {
         const data = await loadDaily();
         const existing = data.scores.find(s => s.normieId === normieId);
         if (existing) {
@@ -188,10 +187,10 @@ const server = http.createServer((req, res) => {
           }
         }
         await saveDaily(data);
-        lbCache = null; // invalidate general leaderboard cache
+        lbCache = null;
         const top20 = [...data.scores].sort((a, b) => b.score - a.score || a.time - b.time).slice(0, 20);
         sendJSON(res, 200, { seed: data.seed, scores: top20 });
-      } finally { dailyLock = false; }
+      }).catch(() => sendJSON(res, 500, { error: 'Server error' }));
     }).catch(e => sendJSON(res, 400, { error: String(e) }));
     return;
   }
@@ -408,5 +407,21 @@ wss.on('connection', (ws, req) => {
     }
   });
 });
+
+// Clean up daily files older than 30 days on startup and daily
+function cleanOldDailyFiles() {
+  fs.promises.readdir(DATA_DIR).then(files => {
+    const cutoff = Date.now() - 30 * 86400000;
+    files.filter(f => f.startsWith('daily-') && f.endsWith('.json')).forEach(f => {
+      const dateStr = f.replace('daily-', '').replace('.json', '');
+      const y = parseInt(dateStr.slice(0, 4)), m = parseInt(dateStr.slice(4, 6)) - 1, d = parseInt(dateStr.slice(6, 8));
+      if (new Date(y, m, d).getTime() < cutoff) {
+        fs.promises.unlink(path.join(DATA_DIR, f)).catch(() => {});
+      }
+    });
+  }).catch(() => {});
+}
+cleanOldDailyFiles();
+setInterval(cleanOldDailyFiles, 86400000);
 
 server.listen(PORT, () => console.log(`Super Normie server running on http://localhost:${PORT}`));

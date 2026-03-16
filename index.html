@@ -122,7 +122,7 @@ const COL={
 };
 
 let cv,cx,gs='menu',nImg=new Image(),nLoaded=false,keys={},loopOn=false;
-let pl,cam,ens,cns,pts,tiles,score=0,cc=0,lives=3,cLv=0,lW=0,dT=0,cT=0;
+let pl,cam,ens,cns,pts,tiles,score=0,cc=0,lives=3,cLv=0,lW=0,dT=0,cT=0,lvTime=0;
 let skyL=[],stars=[];
 
 // Boss
@@ -354,7 +354,7 @@ function buildLv(n){
   ens=d.enm.map(([ex,ey])=>({x:ex*TZ,y:ey*TZ,w:28,h:28,vx:-1.2,vy:0,alive:true,fr:0,grounded:false}));
   cns=d.coins.map(([cx,cy])=>({x:cx*TZ+8,y:cy*TZ+8,col:false,fr:Math.random()*6}));
   pl={x:3*TZ,y:10*TZ,w:28,h:30,vx:0,vy:0,grounded:false,face:1,dead:false,inv:0};
-  cam={x:0};pts=[];dT=0;cT=0;
+  cam={x:0};pts=[];dT=0;cT=0;lvTime=0;
 }
 
 function initBg(){
@@ -626,7 +626,7 @@ function update(){
     if(gs==='lc')cT--;
     return;
   }
-  runTime++;
+  runTime++;lvTime++;
   const mSpd=MS*tMod.spd;
   if(!pl.dead){
     if(kd('l')){pl.vx-=MA;pl.face=-1}else if(kd('r')){pl.vx+=MA;pl.face=1}else pl.vx*=FR;
@@ -687,7 +687,7 @@ function update(){
   if(pl.x+pl.w>flagX*TZ-8&&pl.x<flagX*TZ+TZ){
     gs='lc';cT=120;sfx('w');
     // Achievement checks on level clear
-    if(runTime/60<30)unlock('speed_30');
+    if(lvTime/60<30)unlock('speed_30');
     if(cns.every(c=>c.col))unlock('all_coins');
     if(score>=10000)unlock('score_10k');
     // Multiplayer flag
@@ -707,14 +707,15 @@ function update(){
 let wasBoss=false,savedBossHp=0,savedBossPhase=1;
 function pDie(){if(pl.dead)return;wasBoss=(gs==='boss');
   if(wasBoss&&boss){savedBossHp=boss.hp;savedBossPhase=boss.phase}
-  pl.dead=true;pl.vy=JF;lives--;totalDeaths++;sfx('d');gs='dead';dT=90;if(lives<=0)gs='go'}
+  pl.dead=true;pl.vy=JF;lives--;totalDeaths++;sfx('d');gs='dead';dT=90}
 function respawn(){if(gs!=='dead'||dT>0)return;
+  if(lives<=0){gs='go';return}
   if(wasBoss){buildBossArena();boss.hp=savedBossHp;boss.phase=savedBossPhase;gs='boss'}
   else if(dailyMode){buildDailyLv(dailySeed);gs='play'}
   else{buildLv(cLv);gs='play'}}
 function nextLv(){if(cT>0)return;cLv++;if(cLv>=LVS.length){
   // Boss fight instead of instant win
-  buildBossArena();gs='boss';
+  buildBossArena();gs='boss';lvTime=0;
 }else{buildLv(cLv);gs='play'}}
 function toMenu(){gs='menu';stopMusic();dailyMode=false;
   if(mpWs){try{mpWs.close()}catch(e){};mpWs=null}
@@ -1027,11 +1028,19 @@ function buildDailyLv(seed){
     const ex=10+Math.floor(rng()*(W-20));
     ens.push({x:ex*TZ,y:12*TZ,w:28,h:28,vx:-1.2,vy:0,alive:true,fr:Math.random()*6,grounded:false});
   }
-  // Coins
-  const coC=15+Math.floor(rng()*10);
-  cns=[];for(let i=0;i<coC;i++){
-    const cx2=5+Math.floor(rng()*(W-10)),cy=4+Math.floor(rng()*8);
-    cns.push({x:cx2*TZ+8,y:cy*TZ+8,col:false,fr:Math.random()*6});
+  // Coins — place near platforms or on ground so they're always reachable
+  cns=[];
+  // Coins above each platform (1-2 tiles above)
+  for(let py=0;py<H;py++)for(let px=0;px<W;px++){
+    if(m[py][px]===T.B||m[py][px]===T.Q){
+      if(rng()>.55&&py>=3){cns.push({x:px*TZ+8,y:(py-1)*TZ+8,col:false,fr:Math.random()*6})}
+    }
+  }
+  // Extra coins on ground path (reachable by normal jump)
+  const extraC=8+Math.floor(rng()*6);
+  for(let i=0;i<extraC;i++){
+    const cx2=5+Math.floor(rng()*(W-10));
+    if(gnd[cx2]){cns.push({x:cx2*TZ+8,y:11*TZ+8,col:false,fr:Math.random()*6})}
   }
   pl={x:3*TZ,y:10*TZ,w:28,h:30,vx:0,vy:0,grounded:false,face:1,dead:false,inv:0};
   cam={x:0};pts=[];dT=0;cT=0;
