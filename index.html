@@ -368,7 +368,7 @@ document.addEventListener('keydown',e=>{
   if(['Space','ArrowUp','ArrowDown'].includes(e.code))e.preventDefault();
   if(gs==='achscr'){toMenu();return}
   if(gs==='lb'){if(e.code==='Escape'||e.code==='Backspace'){toMenu();return}
-    if(e.code==='ArrowLeft'||e.code==='ArrowRight'){lbTab=lbTab==='general'?'daily':'general';return}return}
+    if(e.code==='ArrowLeft'||e.code==='ArrowRight'){lbTab=lbTab==='general'?'daily':'general';fetchLeaderboards();return}return}
   if(gs==='dailylb'){if(dailyDone){toMenu()}else{gs='play'};return}
   if(gs==='mp'){
     if(e.code==='Escape'){if(mpWs){mpWs.close();mpWs=null}toMenu();return}
@@ -418,8 +418,8 @@ function initCanvasClick(){
     if(gs==='achscr'){toMenu();return}
     if(gs==='lb'){
       const t1=lbTabRects.t1,t2=lbTabRects.t2;
-      if(mx>=t1.x&&mx<=t1.x+t1.w&&my>=t1.y&&my<=t1.y+t1.h){lbTab='general';return}
-      if(mx>=t2.x&&mx<=t2.x+t2.w&&my>=t2.y&&my<=t2.y+t2.h){lbTab='daily';return}
+      if(mx>=t1.x&&mx<=t1.x+t1.w&&my>=t1.y&&my<=t1.y+t1.h){lbTab='general';fetchLeaderboards();return}
+      if(mx>=t2.x&&mx<=t2.x+t2.w&&my>=t2.y&&my<=t2.y+t2.h){lbTab='daily';fetchLeaderboards();return}
       if(mx>=lbBackBtn.x&&mx<=lbBackBtn.x+lbBackBtn.w&&my>=lbBackBtn.y&&my<=lbBackBtn.y+lbBackBtn.h){toMenu();return}
       return;
     }
@@ -573,6 +573,7 @@ function updateBoss(){
         if(totalDeaths===0)unlock('perfect');
         gs='win';newRecord=false;
         if(score>bestScore||runTime<bestTime){newRecord=true;saveBest(nId);loadBest(nId)}
+        submitScore();
         return;
       }else{
         b.phase=4-b.hp; // phase goes 1→2→3
@@ -709,7 +710,7 @@ function pDie(){if(pl.dead)return;wasBoss=(gs==='boss');
   if(wasBoss&&boss){savedBossHp=boss.hp;savedBossPhase=boss.phase}
   pl.dead=true;pl.vy=JF;lives--;totalDeaths++;sfx('d');gs='dead';dT=90}
 function respawn(){if(gs!=='dead'||dT>0)return;
-  if(lives<=0){gs='go';return}
+  if(lives<=0){gs='go';if(!dailyMode)submitScore();return}
   if(wasBoss){buildBossArena();boss.hp=savedBossHp;boss.phase=savedBossPhase;gs='boss'}
   else if(dailyMode){buildDailyLv(dailySeed);gs='play'}
   else{buildLv(cLv);gs='play'}}
@@ -720,6 +721,7 @@ function nextLv(){if(cT>0)return;cLv++;if(cLv>=LVS.length){
 function toMenu(){gs='menu';stopMusic();dailyMode=false;
   if(mpWs){try{mpWs.close()}catch(e){};mpWs=null}
   mpState='none';mpGhost.vis=false;mpInputCode='';boss=null;
+  if(lbRefreshIv){clearInterval(lbRefreshIv);lbRefreshIv=null}
   showMenu();resetGameState()}
 
 // Render
@@ -1069,6 +1071,13 @@ async function startDaily(){
   if(!loopOn){loopOn=true;requestAnimationFrame(gameLoop)}
 }
 
+async function submitScore(){
+  try{
+    await fetch('/api/score',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({normieId:nId,score,time:runTime})});
+  }catch(e){}
+}
+
 async function submitDaily(){
   try{
     const r=await fetch('/api/daily',{method:'POST',headers:{'Content-Type':'application/json'},
@@ -1080,7 +1089,7 @@ async function submitDaily(){
 async function dailyFinish(){
   unlock('daily');
   if(score>=10000)unlock('score_10k');
-  await submitDaily();
+  await Promise.all([submitDaily(),submitScore()]);
   gs='dailylb';dailyDone=true;
   dailyMode=false;stopMusic();
 }
@@ -1116,14 +1125,23 @@ function drawDailyLB(){
 }
 
 // --- Leaderboard Screen ---
+let lbRefreshIv=null;
+
+async function fetchLeaderboards(){
+  try{const r=await fetch('/api/leaderboard');const d=await r.json();lbGeneral=d.scores||[]}catch(e){}
+  try{const r=await fetch('/api/daily');const d=await r.json();lbDaily=d.scores||[]}catch(e){}
+}
+
 async function showLeaderboard(){
   initCanvas();
   gs='lb';lbTab='general';
   cx.fillStyle=COL.bg;cx.fillRect(0,0,CW,CH);cx.textAlign='center';
   cx.font='12px "Press Start 2P",monospace';cx.fillStyle=COL.txt;
   cx.fillText('Loading leaderboards...',CW/2,CH/2);cx.textAlign='left';
-  try{const r=await fetch('/api/leaderboard');const d=await r.json();lbGeneral=d.scores||[]}catch(e){lbGeneral=[]}
-  try{const r=await fetch('/api/daily');const d=await r.json();lbDaily=d.scores||[]}catch(e){lbDaily=[]}
+  await fetchLeaderboards();
+  // Auto-refresh every 15s while viewing
+  if(lbRefreshIv)clearInterval(lbRefreshIv);
+  lbRefreshIv=setInterval(()=>{if(gs==='lb')fetchLeaderboards();else{clearInterval(lbRefreshIv);lbRefreshIv=null}},15000);
   if(!loopOn){loopOn=true;requestAnimationFrame(gameLoop)}
 }
 

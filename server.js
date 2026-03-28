@@ -14,6 +14,7 @@ const API_RATE_LIMIT = 30; // requests per minute per IP
 const WS_MSG_RATE_LIMIT = 20; // messages per second per connection
 const WS_MAX_PAYLOAD = 1024; // max WebSocket message size in bytes
 const MAX_SCORES_PER_DAY = 500; // cap daily scores array
+const MAX_GENERAL_SCORES = 500; // cap general scores array
 const MAX_WS_PER_IP = 10; // max WebSocket connections per IP
 const ALLOWED_STATIC_EXT = new Set(['.html', '.css', '.png', '.jpg', '.gif', '.ico', '.svg', '.woff', '.woff2']); // whitelist
 
@@ -116,6 +117,23 @@ async function saveDaily(data) {
   await fs.promises.writeFile(getDailyFile(), JSON.stringify(data));
 }
 
+// --- General Scores ---
+const GENERAL_FILE = path.join(DATA_DIR, 'scores.json');
+let generalLockPromise = Promise.resolve();
+
+async function loadGeneral() {
+  try {
+    const raw = await fs.promises.readFile(GENERAL_FILE, 'utf8');
+    return JSON.parse(raw);
+  } catch (e) {
+    return { scores: [] };
+  }
+}
+
+async function saveGeneral(data) {
+  await fs.promises.writeFile(GENERAL_FILE, JSON.stringify(data));
+}
+
 // --- HTTP Server ---
 const server = http.createServer((req, res) => {
   // CORS preflight
@@ -125,33 +143,48 @@ const server = http.createServer((req, res) => {
 
   // REST API endpoints
 
-  // General leaderboard — aggregate all daily files, best per normieId
+  // General leaderboard — best per normieId from scores.json
   if (req.url === '/api/leaderboard' && req.method === 'GET') {
     if (!checkApiRate(clientIp)) { sendJSON(res, 429, { error: 'Rate limit exceeded' }); return; }
-    // Use cache (5 min)
+    // Use cache (30s)
     const now = Date.now();
-    if (lbCache && now - lbCacheTime < 300000) { sendJSON(res, 200, lbCache); return; }
-    fs.promises.readdir(DATA_DIR).then(async files => {
-      const dailyFiles = files.filter(f => f.startsWith('daily-') && f.endsWith('.json'));
-      const best = new Map(); // normieId -> {normieId, score, time, date}
-      for (const file of dailyFiles) {
-        try {
-          const raw = await fs.promises.readFile(path.join(DATA_DIR, file), 'utf8');
-          const data = JSON.parse(raw);
-          const dateStr = file.replace('daily-', '').replace('.json', '');
-          (data.scores || []).forEach(s => {
-            const existing = best.get(s.normieId);
-            if (!existing || s.score > existing.score || (s.score === existing.score && s.time < existing.time)) {
-              best.set(s.normieId, { normieId: s.normieId, score: s.score, time: s.time, date: dateStr });
-            }
-          });
-        } catch (e) { /* skip corrupt files */ }
-      }
-      const top20 = [...best.values()].sort((a, b) => b.score - a.score || a.time - b.time).slice(0, 20);
+    if (lbCache && now - lbCacheTime < 30000) { sendJSON(res, 200, lbCache); return; }
+    loadGeneral().then(data => {
+      const top20 = [...data.scores].sort((a, b) => b.score - a.score || a.time - b.time).slice(0, 20);
       lbCache = { scores: top20 };
       lbCacheTime = now;
       sendJSON(res, 200, lbCache);
     }).catch(() => sendJSON(res, 500, { error: 'Server error' }));
+    return;
+  }
+
+  // Submit general score
+  if (req.url === '/api/score' && req.method === 'POST') {
+    if (!checkApiRate(clientIp)) { sendJSON(res, 429, { error: 'Rate limit exceeded' }); return; }
+    readBody(req).then(async body => {
+      const { normieId, score, time } = body;
+      if (!isInt(normieId, 0, 9999)) { sendJSON(res, 400, { error: 'Invalid normieId' }); return; }
+      if (!isInt(score, 0, 999999)) { sendJSON(res, 400, { error: 'Invalid score' }); return; }
+      if (!isInt(time, 0, 9999999)) { sendJSON(res, 400, { error: 'Invalid time' }); return; }
+
+      generalLockPromise = generalLockPromise.then(async () => {
+        const data = await loadGeneral();
+        const existing = data.scores.find(s => s.normieId === normieId);
+        if (existing) {
+          if (score > existing.score || (score === existing.score && time < existing.time)) {
+            existing.score = score; existing.time = time;
+          }
+        } else {
+          if (data.scores.length < MAX_GENERAL_SCORES) {
+            data.scores.push({ normieId, score, time });
+          }
+        }
+        await saveGeneral(data);
+        lbCache = null; // invalidate cache
+        const top20 = [...data.scores].sort((a, b) => b.score - a.score || a.time - b.time).slice(0, 20);
+        sendJSON(res, 200, { scores: top20 });
+      }).catch(() => sendJSON(res, 500, { error: 'Server error' }));
+    }).catch(e => sendJSON(res, 400, { error: String(e) }));
     return;
   }
 
